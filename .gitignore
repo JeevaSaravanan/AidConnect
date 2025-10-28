@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+mcp-hub/.env
+
+mcp-hub/.venv
+mcp-hub/.venv/*
+./.venv/*
+mcp-hub/__pycache__ 
