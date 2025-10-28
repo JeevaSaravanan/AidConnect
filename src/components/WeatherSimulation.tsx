@@ -4,13 +4,17 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown, X } from "lucide-react";
+import { ChevronDown, X, Loader2 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 const WeatherSimulation = () => {
   const [selectedEvent, setSelectedEvent] = useState("hurricane-harvey");
   const [selectedVariables, setSelectedVariables] = useState<string[]>(["wind-speed", "surface-temp", "water-vapor"]);
   const [weatherVariable, setWeatherVariable] = useState("surface-temp");
   const [ensembleMember, setEnsembleMember] = useState("member-1");
+  const [isLoading, setIsLoading] = useState(false);
+  const [forecastData, setForecastData] = useState<{ timestamp: string; video_paths: Record<string, string> } | null>(null);
+  const { toast } = useToast();
 
   const removeVariable = (variable: string) => {
     setSelectedVariables(selectedVariables.filter(v => v !== variable));
@@ -32,6 +36,116 @@ const WeatherSimulation = () => {
     v => !selectedVariables.includes(v)
   );
 
+  const handleForecast = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('http://localhost:5001/forecast', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          weatherEvent: selectedEvent,
+          weatherVariables: selectedVariables,
+        }),
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        setForecastData(result.data);
+        toast({
+          title: "Forecast Complete",
+          description: "Weather simulation has been generated successfully.",
+        });
+      } else {
+        throw new Error(result.error || 'Forecast failed');
+      }
+    } catch (error) {
+      console.error('Forecast error:', error);
+      toast({
+        title: "Forecast Failed",
+        description: error instanceof Error ? error.message : "An error occurred during the forecast.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleReset = () => {
+    setSelectedEvent("hurricane-harvey");
+    setSelectedVariables(["wind-speed", "surface-temp", "water-vapor"]);
+    setWeatherVariable("surface-temp");
+    setForecastData(null);
+  };
+
+  const getVideoUrl = () => {
+    if (!forecastData) return null;
+    return `http://localhost:5001/video/${forecastData.timestamp}/${weatherVariable}`;
+  };
+
+  // Get the appropriate legend data based on selected variable
+  const getLegendData = () => {
+    switch (weatherVariable) {
+      case "surface-temp":
+        return {
+          unit: "°C",
+          values: [40, 30, 20, 10, 0, -10, -20, -30],
+          getColor: (value: number) => {
+            if (value > 20) return 'hsl(var(--destructive))';
+            if (value > 0) return 'hsl(var(--warning))';
+            return 'hsl(var(--primary))';
+          }
+        };
+      case "wind-speed":
+        return {
+          unit: "m/s",
+          values: [50, 40, 30, 20, 10, 5, 0],
+          getColor: (value: number) => {
+            if (value >= 60) return '#8B0000'; // Dark red
+            if (value >= 50) return '#FF0000'; // Red
+            if (value >= 40) return '#FF4500'; // Orange red
+            if (value >= 30) return '#FFD700'; // Gold
+            if (value >= 20) return '#90EE90'; // Light green
+            if (value >= 10) return '#00CED1'; // Cyan
+            if (value >= 5) return '#1E90FF'; // Blue
+            return '#4B0082'; // Indigo/Purple
+          }
+        };
+      case "water-vapor":
+        return {
+          unit: "kg/m²",
+          values: [70, 60, 50, 40, 30, 20, 10, 0],
+          getColor: (value: number) => {
+            // Color scale from the image: purple -> blue -> cyan -> green -> yellow -> red
+            if (value >= 90) return '#0b0047ff'; // Dark red
+            if (value >= 80) return '#021a90ff'; // Red
+            if (value >= 70) return '#008cffff'; // Orange red
+            if (value >= 60) return '#00f2ffff'; // Gold
+            if (value >= 50) return '#12a86eff'; // Light green
+            if (value >= 40) return '#06bc37ff'; // Cyan
+            if (value >= 30) return '#defa8eff'; // Blue
+            if (value >= 20) return '#fcfb9eff'; // Indigo
+            if (value >= 10) return '#ffe0a7ff'; // BlueViolet
+            return '#f9d7adff'; // Indigo/Purple
+          }
+        };
+      default:
+        return {
+          unit: "°C",
+          values: [40, 30, 20, 10, 0, -10, -20, -30],
+          getColor: (value: number) => {
+            if (value > 20) return 'hsl(var(--destructive))';
+            if (value > 0) return 'hsl(var(--warning))';
+            return 'hsl(var(--primary))';
+          }
+        };
+    }
+  };
+
+  const legendData = getLegendData();
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Input Panel */}
@@ -43,7 +157,7 @@ const WeatherSimulation = () => {
 
           {/* Sample Weather Event */}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-muted-foreground">Sample Weather Event</label>
+            <label className="text-sm font-medium text-muted-foreground">Weather Event</label>
             <Select value={selectedEvent} onValueChange={setSelectedEvent}>
               <SelectTrigger className="w-full bg-secondary border-border">
                 <SelectValue />
@@ -95,7 +209,7 @@ const WeatherSimulation = () => {
           {/* Collapsible Sections */}
           <Collapsible defaultOpen className="border-t border-border pt-4">
             <CollapsibleTrigger className="flex items-center justify-between w-full text-left">
-              <span className="font-medium text-foreground">About Sample Weather Events</span>
+              <span className="font-medium text-foreground">About Weather Events</span>
               <ChevronDown className="w-4 h-4 text-muted-foreground" />
             </CollapsibleTrigger>
             <CollapsibleContent className="pt-3">
@@ -181,11 +295,22 @@ const WeatherSimulation = () => {
 
           {/* Action Buttons */}
           <div className="flex gap-3 pt-4">
-            <Button variant="outline" className="flex-1">
+            <Button variant="outline" className="flex-1" onClick={handleReset} disabled={isLoading}>
               Reset
             </Button>
-            <Button className="flex-1 bg-success hover:bg-success/90">
-              Forecast
+            <Button 
+              className="flex-1 bg-success hover:bg-success/90" 
+              onClick={handleForecast}
+              disabled={isLoading || selectedVariables.length === 0}
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Forecasting...
+                </>
+              ) : (
+                'Forecast'
+              )}
             </Button>
           </div>
         </div>
@@ -206,9 +331,11 @@ const WeatherSimulation = () => {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="surface-temp">Surface Temperature</SelectItem>
-                <SelectItem value="wind-speed">Wind Speed</SelectItem>
-                <SelectItem value="water-vapor">Total Column Water Vapor</SelectItem>
+                {selectedVariables.map((variable) => (
+                  <SelectItem key={variable} value={variable}>
+                    {variableLabels[variable]}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -230,37 +357,69 @@ const WeatherSimulation = () => {
 
           {/* Visualization Area */}
           <div className="aspect-square bg-secondary rounded-lg flex items-center justify-center relative overflow-hidden border border-border">
-            {/* Globe Placeholder */}
-            <div className="relative w-full h-full flex items-center justify-center">
-              <div className="absolute inset-0 opacity-20">
-                <div className="w-full h-full" style={{
-                  backgroundImage: `repeating-linear-gradient(0deg, hsl(var(--border)) 0px, transparent 1px, transparent 30px), 
-                                  repeating-linear-gradient(90deg, hsl(var(--border)) 0px, transparent 1px, transparent 30px)`
-                }} />
-              </div>
-              
-              <div className="relative z-10 w-64 h-64 rounded-full border-4 border-primary/30 flex items-center justify-center bg-gradient-to-br from-warning/20 via-destructive/20 to-primary/20">
-                <div className="text-center space-y-2">
-                  <div className="text-sm font-medium text-muted-foreground">Globe Visualization</div>
-                  <div className="text-xs text-muted-foreground">Weather data overlay</div>
+            {forecastData && getVideoUrl() ? (
+              <>
+                <video 
+                  key={getVideoUrl()}
+                  className="w-full h-full object-contain"
+                  controls 
+                  autoPlay 
+                  loop
+                  src={getVideoUrl() || undefined}
+                >
+                  Your browser does not support the video tag.
+                </video>
+                
+                {/* Legend for video */}
+                <div className="absolute right-4 top-1/2 -translate-y-1/2 space-y-1 bg-background/80 backdrop-blur-sm p-2 rounded-lg">
+                  <div className="text-xs font-medium text-foreground mb-2">{legendData.unit}</div>
+                  {legendData.values.map((value) => (
+                    <div key={value} className="flex items-center gap-2">
+                      <div className="w-6 h-3 rounded border border-border" style={{
+                        background: legendData.getColor(value)
+                      }} />
+                      <span className="text-xs text-foreground">{value}</span>
+                    </div>
+                  ))}
                 </div>
-              </div>
-
-              {/* Legend */}
-              <div className="absolute right-4 top-1/2 -translate-y-1/2 space-y-1">
-                <div className="text-xs font-medium text-foreground mb-2">°C</div>
-                {[40, 30, 20, 10, 0, -10, -20, -30].map((temp) => (
-                  <div key={temp} className="flex items-center gap-2">
-                    <div className="w-6 h-3 rounded" style={{
-                      background: temp > 20 ? 'hsl(var(--destructive))' : 
-                                 temp > 0 ? 'hsl(var(--warning))' : 
-                                 'hsl(var(--primary))'
+              </>
+            ) : (
+              <>
+                {/* Globe Placeholder */}
+                <div className="relative w-full h-full flex items-center justify-center">
+                  <div className="absolute inset-0 opacity-20">
+                    <div className="w-full h-full" style={{
+                      backgroundImage: `repeating-linear-gradient(0deg, hsl(var(--border)) 0px, transparent 1px, transparent 30px), 
+                                      repeating-linear-gradient(90deg, hsl(var(--border)) 0px, transparent 1px, transparent 30px)`
                     }} />
-                    <span className="text-xs text-muted-foreground">{temp}</span>
                   </div>
-                ))}
-              </div>
-            </div>
+                  
+                  <div className="relative z-10 w-64 h-64 rounded-full border-4 border-primary/30 flex items-center justify-center bg-gradient-to-br from-warning/20 via-destructive/20 to-primary/20">
+                    <div className="text-center space-y-2">
+                      <div className="text-sm font-medium text-muted-foreground">
+                        {isLoading ? "Generating Forecast..." : "Globe Visualization"}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {isLoading ? "Please wait..." : "Click Forecast to generate"}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Legend */}
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 space-y-1">
+                    <div className="text-xs font-medium text-foreground mb-2">{legendData.unit}</div>
+                    {legendData.values.map((value) => (
+                      <div key={value} className="flex items-center gap-2">
+                        <div className="w-6 h-3 rounded" style={{
+                          background: legendData.getColor(value)
+                        }} />
+                        <span className="text-xs text-muted-foreground">{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </Card>

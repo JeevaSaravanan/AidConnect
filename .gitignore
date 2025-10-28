@@ -29,3 +29,17 @@ mcp-hub/.venv/*
 ./.venv/*
 mcp-hub/__pycache__ 
 .env
+
+# Python virtual environments
+venv/
+venv/*
+**/venv/
+**/venv/*
+
+# Weather simulation outputs
+weather_outputs/
+weather_outputs/*
+**/weather_outputs/
+**/weather_outputs/*
+server/simulation/venv/
+server/simulation/weather_outputs/
