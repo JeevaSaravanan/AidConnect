@@ -19,6 +19,7 @@ from pathlib import Path
 import asyncio
 import time
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 # Import existing helpers from the repo. These modules do not start servers at
@@ -26,6 +27,22 @@ from pydantic import BaseModel
 import httpx
 import json
 from llm_utils import nv_chat
+import uuid
+from pathlib import Path as _Path
+
+# Load default disaster context to use with assistant/chat endpoints
+_DEFAULT_DISASTER_PATH = _Path(__file__).resolve().parent / "default_disaster.json"
+try:
+    if _DEFAULT_DISASTER_PATH.exists():
+        with _DEFAULT_DISASTER_PATH.open("r", encoding="utf-8") as _dfh:
+            _DEFAULT_DISASTER = json.load(_dfh)
+    else:
+        _DEFAULT_DISASTER = None
+except Exception:
+    _DEFAULT_DISASTER = None
+
+# In-memory conversation store: session_id -> list[message]
+CONVERSATIONS: Dict[str, List[Dict[str, str]]] = {}
 
 # We'll implement small local wrappers that mirror the behavior of the
 # decorated MCP tool functions in this repo. This avoids calling the
@@ -395,6 +412,15 @@ def _filter_and_rank(items: List[Dict[str, Any]], name: Optional[str] = None, la
 
 app = FastAPI(title="mcp-hub API", version="0.1.0")
 
+# Allow CORS from local dev frontends (vite dev server). Add other origins as needed.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:8080", "http://127.0.0.1:8080", "http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 class WeatherRequest(BaseModel):
     city: str
@@ -591,6 +617,92 @@ def api_chat(req: ChatRequest):
         # Call the shared nv_chat (cached) helper
         out = nv_chat(req.messages, max_tokens=req.max_tokens, temperature=req.temperature)
         return {"ok": True, "response": out}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class AssistantRequest(BaseModel):
+    query: str
+    context: Optional[Dict[str, Any]] = None
+
+
+@app.post("/assistant")
+def api_assistant(req: AssistantRequest):
+    """A helpful interactive assistant endpoint that injects the default disaster context
+    into the LLM system prompt. Returns the assistant's text reply.
+    """
+    try:
+        system = (
+            "You are AidConnect Assistant — a helpful, concise, and interactive disaster response assistant. "
+            "You have access to a `disaster` JSON object describing the current incident (location, areas affected, resources needed). "
+            "When answering, prioritize safety, urgent needs, suggested actions with ETA estimates, and concise lists of next steps."
+        )
+
+        messages = [
+            {"role": "system", "content": system},
+        ]
+
+        # attach default disaster context if available
+        if _DEFAULT_DISASTER is not None:
+            messages.append({"role": "system", "content": f"disaster_context: {json.dumps(_DEFAULT_DISASTER)}"})
+
+        # add user's query
+        messages.append({"role": "user", "content": req.query})
+
+        out = nv_chat(messages, max_tokens=700, temperature=0.2)
+        return {"ok": True, "reply": out}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class AssistantConverseRequest(BaseModel):
+    session_id: Optional[str] = None
+    message: str
+    max_history: Optional[int] = 8
+
+
+@app.post("/assistant/converse")
+def api_assistant_converse(req: AssistantConverseRequest):
+    """Sessioned conversational assistant. Provide session_id to continue a conversation; when omitted a new session_id is returned.
+
+    The assistant is explicitly instructed not to fabricate facts. If the assistant lacks needed information it should reply "I don't know" or ask a clarifying question.
+    """
+    try:
+        sid = req.session_id or str(uuid.uuid4())
+        # retrieve or create conversation
+        conv = CONVERSATIONS.setdefault(sid, [])
+
+        # append the new user message
+        conv.append({"role": "user", "content": req.message})
+
+        # build messages for LLM: system prompt, disaster context, then recent history
+        system = (
+            "You are AidConnect Assistant — a helpful, concise, and interactive disaster response assistant. "
+            "You have access to a `disaster` JSON object describing the current incident. "
+            "Answer only based on the provided context or general best practices. If you do not know an answer or lack data, reply with 'I don't know' or ask for clarification. Do NOT invent facts. "
+            "When possible give short actionable steps with estimated arrival times for resources (if distances are provided)."
+        )
+
+        messages: List[Dict[str, str]] = [{"role": "system", "content": system}]
+        if _DEFAULT_DISASTER is not None:
+            messages.append({"role": "system", "content": f"disaster_context: {json.dumps(_DEFAULT_DISASTER)}"})
+
+        # include last N messages (user+assistant pairs) up to max_history
+        max_hist = int(req.max_history or 8)
+        recent = conv[-max_hist:]
+        messages.extend(recent)
+
+        out = nv_chat(messages, max_tokens=700, temperature=0.2)
+
+        # append assistant reply to conversation
+        conv.append({"role": "assistant", "content": out})
+
+        # keep conversation bounded
+        if len(conv) > 500:
+            # drop oldest messages but keep last 200
+            del conv[0: len(conv) - 200]
+
+        return {"ok": True, "session_id": sid, "reply": out}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

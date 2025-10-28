@@ -28,3 +28,4 @@ mcp-hub/.venv
 mcp-hub/.venv/*
 ./.venv/*
 mcp-hub/__pycache__ 
+.env

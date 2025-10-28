@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,10 @@ const ChatInterface = () => {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isLoading]);
 
   const handleSend = async () => {
     if (!input.trim()) return;
@@ -30,25 +34,46 @@ const ChatInterface = () => {
     setIsLoading(true);
 
     try {
-      // Attempt to call a local API endpoint. If you have a backend, point this
-      // to the appropriate route. This removes the Supabase Functions dependency.
+      // Try a few possible backend endpoints in order. Many dev setups run the
+      // local FastAPI server in `mcp-hub` on port 8000 (see mcp-hub/api_server.py).
+      // First try the app-relative endpoint (useful when a proxy maps /api/*),
+      // then try the local FastAPI assistant/converse endpoint, then the chat
+      // endpoint. This keeps the UI working in multiple environments.
       const prompt = input;
-      const resp = await fetch("/api/disaster-chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: prompt }),
-      });
 
-      if (!resp.ok) {
-        throw new Error(`Network error: ${resp.status}`);
+      // helper to try an endpoint and return parsed JSON or throw
+      const tryFetch = async (url: string, body: any) => {
+        const r = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!r.ok) throw new Error(`Network error: ${r.status} for ${url}`);
+        return r.json().catch(() => ({} as any));
+      };
+
+      // 1) try app-relative (proxy/deployment)
+      let json: any = {};
+      try {
+        json = await tryFetch("/api/disaster-chat", { message: prompt });
+      } catch (e1) {
+        // 2) try local mcp-hub assistant converse (returns { ok, session_id, reply })
+        try {
+          json = await tryFetch("http://127.0.0.1:8000/assistant/converse", { message: prompt });
+        } catch (e2) {
+          // 3) try local mcp-hub chat endpoint (returns { ok, response })
+          try {
+            json = await tryFetch("http://127.0.0.1:8000/chat", { messages: [{ role: "user", content: prompt }] });
+          } catch (e3) {
+            // rethrow the last error so outer catch handles fallback
+            throw e3;
+          }
+        }
       }
 
-      const json = await resp.json().catch(() => ({} as any));
-      const assistantMessage: Message = {
-        role: "assistant",
-        // Use backend response if available, otherwise fall back to a simple echo.
-        content: (json && json.response) || `(offline) I heard: ${prompt}`,
-      };
+      // Normalize backend response into a text reply
+      const reply = (json && (json.response || json.reply)) || `(offline) I heard: ${prompt}`;
+      const assistantMessage: Message = { role: "assistant", content: reply };
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
       console.error("Error:", error);
@@ -95,6 +120,7 @@ const ChatInterface = () => {
             </div>
           </div>
         ))}
+        <div ref={messagesEndRef} />
         {isLoading && (
           <div className="flex justify-start">
             <div className="bg-secondary text-secondary-foreground rounded-lg p-3">
@@ -104,12 +130,20 @@ const ChatInterface = () => {
         )}
       </div>
 
+      
+
       <div className="p-4 border-t border-border">
         <div className="flex gap-2">
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyPress={(e) => e.key === "Enter" && handleSend()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                // Prevent form submission / newline insertion behavior
+                e.preventDefault();
+                handleSend();
+              }
+            }}
             placeholder="Ask about situation, resources, or get recommendations..."
             disabled={isLoading}
             className="flex-1 bg-input border-border"

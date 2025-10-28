@@ -1,0 +1,37 @@
+{
+  "id": "disaster-georgetown-va-1",
+  "name": "Severe Flooding — Georgetown, VA (simulated)",
+  "description": "Widespread riverine and flash flooding following heavy rainfall; road closures and localized infrastructure damage reported.",
+  "timestamp": "2025-10-28T00:00:00Z",
+  "lat": 38.3,
+  "lon": -77.3,
+  "city": "Georgetown, VA",
+  "totalPeopleAffected": 4200,
+  "areasAffected": [
+    {
+      "id": "area-1",
+      "name": "Georgetown Central",
+      "city": "Georgetown, VA",
+      "lat": 38.302,
+      "lon": -77.298,
+      "peopleAffected": 2400,
+      "resourcesNeeded": ["shelter", "medical", "food", "water"],
+      "severity": "high",
+      "notes": "Residential flooding; primary bridge closed and power outages in several blocks."
+    },
+    {
+      "id": "area-2",
+      "name": "Riverbend / Lowlands",
+      "city": "Georgetown, VA",
+      "lat": 38.295,
+      "lon": -77.31,
+      "peopleAffected": 1800,
+      "resourcesNeeded": ["evacuation-transport", "shelter", "generators", "water"],
+      "severity": "critical",
+      "notes": "Low-lying neighborhoods submerged; immediate evacuations recommended for vulnerable residents."
+    }
+  ],
+  "resourcesNeeded": ["shelter", "evacuation-transport", "medical", "food", "water", "generators"],
+  "severity": "high",
+  "source": "simulated/config"
+}
