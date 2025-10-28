@@ -5,9 +5,10 @@ import ChatInterface from "@/components/ChatInterface";
 import ResourcePanel from "@/components/ResourcePanel";
 import AlertFeed from "@/components/AlertFeed";
 import MapView from "@/components/MapView";
+import WeatherSimulation from "@/components/WeatherSimulation";
 
 const Index = () => {
-  const [activeTab, setActiveTab] = useState<"overview" | "resources" | "chat">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "resources" | "chat" | "weather">("overview");
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -46,6 +47,16 @@ const Index = () => {
           >
             AI Assistant
           </button>
+          <button
+            onClick={() => setActiveTab("weather")}
+            className={`px-4 py-2 font-medium transition-colors ${
+              activeTab === "weather"
+                ? "text-primary border-b-2 border-primary"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Weather Forecast Simulation
+          </button>
         </div>
 
         {/* Overview Tab */}
@@ -83,6 +94,11 @@ const Index = () => {
               <AlertFeed />
             </div>
           </div>
+        )}
+
+        {/* Weather Tab */}
+        {activeTab === "weather" && (
+          <WeatherSimulation />
         )}
       </main>
     </div>
