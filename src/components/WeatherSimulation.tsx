@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 const WeatherSimulation = () => {
   const [selectedEvent, setSelectedEvent] = useState("hurricane-harvey");
   const [selectedVariables, setSelectedVariables] = useState<string[]>(["wind-speed", "surface-temp", "water-vapor"]);
-  const [weatherVariable, setWeatherVariable] = useState("surface-temp");
+  const [weatherVariable, setWeatherVariable] = useState("wind-speed");
   const [ensembleMember, setEnsembleMember] = useState("member-1");
   const [isLoading, setIsLoading] = useState(false);
   const [forecastData, setForecastData] = useState<{ timestamp: string; video_paths: Record<string, string> } | null>(null);
@@ -76,7 +76,7 @@ const WeatherSimulation = () => {
   const handleReset = () => {
     setSelectedEvent("hurricane-harvey");
     setSelectedVariables(["wind-speed", "surface-temp", "water-vapor"]);
-    setWeatherVariable("surface-temp");
+    setWeatherVariable("wind-speed");
     setForecastData(null);
   };
 

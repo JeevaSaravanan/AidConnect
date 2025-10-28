@@ -26,7 +26,7 @@ from pydantic import BaseModel
 # import-time (their mcp.run() is guarded by __main__), so safe to import.
 import httpx
 import json
-from llm_utils import nv_chat
+from llm_utils import nv_chat, initialize_rag, nv_chat_rag
 import uuid
 from pathlib import Path as _Path
 
@@ -43,6 +43,9 @@ except Exception:
 
 # In-memory conversation store: session_id -> list[message]
 CONVERSATIONS: Dict[str, List[Dict[str, str]]] = {}
+
+# Global flag to track if RAG is available
+RAG_ENABLED = False
 
 # We'll implement small local wrappers that mirror the behavior of the
 # decorated MCP tool functions in this repo. This avoids calling the
@@ -422,6 +425,36 @@ app.add_middleware(
 )
 
 
+@app.on_event("startup")
+async def startup_event():
+    """Initialize RAG system at server startup."""
+    global RAG_ENABLED
+    print("[STARTUP] Initializing RAG system...")
+    try:
+        # Initialize RAG with PDFs from data folder
+        success = initialize_rag(pdf_dir="../data")
+        if success:
+            RAG_ENABLED = True
+            print("[STARTUP] ✓ RAG system initialized successfully!")
+            print("[STARTUP] Documents loaded: shelter policies, homeless services, donation info")
+        else:
+            print("[STARTUP] ⚠ RAG initialization failed - chat will work without document context")
+    except Exception as e:
+        print(f"[STARTUP] ⚠ RAG initialization error: {e}")
+        print("[STARTUP] Chat will continue without RAG functionality")
+
+
+@app.get("/health")
+def health():
+    """Health check endpoint with RAG status."""
+    return {
+        "ok": True,
+        "service": "mcp-hub API",
+        "rag_enabled": RAG_ENABLED,
+        "features": ["weather", "disaster_plan", "arcgis", "fema", "chat", "rag" if RAG_ENABLED else None]
+    }
+
+
 class WeatherRequest(BaseModel):
     city: str
 
@@ -453,11 +486,8 @@ class ChatRequest(BaseModel):
     messages: List[Dict[str, str]]
     max_tokens: Optional[int] = 512
     temperature: Optional[float] = 0.7
-
-
-@app.get("/health")
-def health() -> Dict[str, str]:
-    return {"status": "ok"}
+    use_rag: Optional[bool] = True  # Enable RAG by default if available
+    rag_k: Optional[int] = 4  # Number of document chunks to retrieve
 
 
 @app.post("/weather")
@@ -613,10 +643,48 @@ def api_shelters(
 
 @app.post("/chat")
 def api_chat(req: ChatRequest):
+    """
+    Chat endpoint with optional RAG support.
+    
+    If use_rag=True and RAG is enabled, the last user message will be enhanced
+    with relevant context from PDF documents about shelters, homeless services, and donations.
+    """
     try:
-        # Call the shared nv_chat (cached) helper
+        # Check if we should use RAG
+        should_use_rag = req.use_rag and RAG_ENABLED
+        
+        if should_use_rag:
+            # Extract the last user message for RAG query
+            user_message = None
+            for msg in reversed(req.messages):
+                if msg.get("role") == "user":
+                    user_message = msg.get("content", "")
+                    break
+            
+            if user_message:
+                # Check if the query is relevant to our documents (shelters, homeless services, donations)
+                relevant_keywords = [
+                    "shelter", "homeless", "donate", "donation", "volunteer",
+                    "service", "housing", "emergency", "food", "clothing",
+                    "charity", "help", "assistance", "resource", "facility"
+                ]
+                
+                query_lower = user_message.lower()
+                is_relevant = any(keyword in query_lower for keyword in relevant_keywords)
+                
+                if is_relevant:
+                    # Use RAG-enabled chat
+                    out = nv_chat_rag(
+                        question=user_message,
+                        max_tokens=req.max_tokens,
+                        temperature=req.temperature,
+                        k=req.rag_k
+                    )
+                    return {"ok": True, "response": out, "rag_used": True}
+        
+        # Fall back to regular chat (no RAG)
         out = nv_chat(req.messages, max_tokens=req.max_tokens, temperature=req.temperature)
-        return {"ok": True, "response": out}
+        return {"ok": True, "response": out, "rag_used": False}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -661,26 +729,194 @@ class AssistantConverseRequest(BaseModel):
     max_history: Optional[int] = 8
 
 
+def _execute_tool_call(tool_name: str, tool_args: Dict[str, Any]) -> str:
+    """Execute a tool function by name and return its result as a string."""
+    try:
+        if tool_name == "call_weather_api":
+            city = tool_args.get("city")
+            lat = tool_args.get("lat")
+            lon = tool_args.get("lon")
+            return call_weather_api(city=city, lat=lat, lon=lon)
+        elif tool_name == "call_arcgis_api":
+            return call_arcgis_api(**tool_args)
+        elif tool_name == "call_fema_api":
+            return call_fema_api(**tool_args)
+        elif tool_name == "search_volunteers":
+            items = _read_jsonl_file("people_volunteers.jsonl", limit=1000000000, offset=0)
+            results = _filter_and_rank(items, **tool_args)
+            return json.dumps({"count": len(results), "data": results[:10]}, indent=2)
+        elif tool_name == "search_shelters":
+            items = _read_jsonl_file("shelters_actual.jsonl", limit=1000000000, offset=0)
+            results = _filter_and_rank(items, **tool_args)
+            return json.dumps({"count": len(results), "data": results[:10]}, indent=2)
+        else:
+            return json.dumps({"error": f"Unknown tool: {tool_name}"})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+def _parse_tool_calls(text: str) -> List[Dict[str, Any]]:
+    """Parse tool calls from LLM response text in the format: <tool_call>{"name":"...", "arguments":{...}}</tool_call>"""
+    import re
+    tool_calls = []
+    pattern = r'<tool_call>(.*?)</tool_call>'
+    matches = re.findall(pattern, text, re.DOTALL)
+    for match in matches:
+        try:
+            call_data = json.loads(match.strip())
+            tool_calls.append(call_data)
+        except Exception:
+            continue
+    return tool_calls
+
+
+def _should_use_rag(message: str) -> bool:
+    """
+    Determine if a message is relevant to RAG documents.
+    Returns True if the message asks about shelters, homeless services, donations, etc.
+    """
+    if not RAG_ENABLED:
+        return False
+    
+    relevant_keywords = [
+        "shelter", "homeless", "donate", "donation", "volunteer",
+        "service", "housing", "emergency housing", "food", "clothing",
+        "charity", "help", "assistance", "resource", "facility",
+        "sop", "policy", "policies", "procedure", "operating",
+        "alexandria", "dc area", "washington", "give away", "stuff"
+    ]
+    
+    query_lower = message.lower()
+    return any(keyword in query_lower for keyword in relevant_keywords)
+
+
+def _enhance_message_with_rag(message: str, max_tokens: int = 400) -> str:
+    """
+    Use RAG to enhance a message with relevant document context.
+    Returns the RAG-enhanced response.
+    """
+    if not RAG_ENABLED:
+        return message
+    
+    try:
+        return nv_chat_rag(
+            question=message,
+            max_tokens=max_tokens,
+            temperature=0.2,
+            k=4
+        )
+    except Exception as e:
+        print(f"[RAG ERROR] Failed to enhance message: {e}")
+        return message
+
+
+def _detect_and_inject_tool_call(user_message: str) -> Optional[str]:
+    """Detect common query patterns and inject appropriate tool calls.
+    
+    This helps when the LLM doesn't naturally generate tool calls.
+    Returns a synthetic assistant message with tool call, or None if no pattern matches.
+    """
+    import re
+    
+    msg_lower = user_message.lower()
+    
+    # Weather patterns
+    weather_patterns = [
+        r'weather.*in\s+([a-zA-Z\s,]+)',
+        r'what.*weather.*([a-zA-Z\s,]+)',
+        r'how.*weather.*([a-zA-Z\s,]+)',
+        r'temperature.*in\s+([a-zA-Z\s,]+)',
+        r'forecast.*for\s+([a-zA-Z\s,]+)',
+    ]
+    
+    for pattern in weather_patterns:
+        match = re.search(pattern, msg_lower)
+        if match:
+            city = match.group(1).strip()
+            # Clean up common words
+            city = re.sub(r'\b(today|now|currently|the)\b', '', city).strip()
+            if city:
+                tool_call = f'<tool_call>{{"name": "call_weather_api", "arguments": {{"city": "{city}"}}}}</tool_call>'
+                return tool_call
+    
+    # Volunteer patterns
+    volunteer_patterns = [
+        r'find.*volunteers?.*in\s+([a-zA-Z\s,]+)',
+        r'volunteers?.*near\s+([a-zA-Z\s,]+)',
+        r'list.*volunteers?',
+    ]
+    
+    for pattern in volunteer_patterns:
+        match = re.search(pattern, msg_lower)
+        if match:
+            location = match.group(1).strip() if match.lastindex else None
+            args = {"name": location} if location else {}
+            tool_call = f'<tool_call>{{"name": "search_volunteers", "arguments": {json.dumps(args)}}}</tool_call>'
+            return tool_call
+    
+    # Shelter patterns
+    shelter_patterns = [
+        r'find.*shelters?.*in\s+([a-zA-Z\s,]+)',
+        r'shelters?.*near\s+([a-zA-Z\s,]+)',
+        r'list.*shelters?',
+    ]
+    
+    for pattern in shelter_patterns:
+        match = re.search(pattern, msg_lower)
+        if match:
+            location = match.group(1).strip() if match.lastindex else None
+            args = {"name": location} if location else {}
+            tool_call = f'<tool_call>{{"name": "search_shelters", "arguments": {json.dumps(args)}}}</tool_call>'
+            return tool_call
+    
+    return None
+
+
 @app.post("/assistant/converse")
 def api_assistant_converse(req: AssistantConverseRequest):
-    """Sessioned conversational assistant. Provide session_id to continue a conversation; when omitted a new session_id is returned.
-
-    The assistant is explicitly instructed not to fabricate facts. If the assistant lacks needed information it should reply "I don't know" or ask a clarifying question.
+    """Sessioned conversational assistant with RAG support. 
+    
+    Provide session_id to continue a conversation; when omitted a new session_id is returned.
+    The assistant can call tools like call_weather_api, search_volunteers, search_shelters, etc.
+    For questions about shelter policies, homeless services, or donations, RAG is automatically used to provide accurate information from documents.
     """
     try:
         sid = req.session_id or str(uuid.uuid4())
         # retrieve or create conversation
         conv = CONVERSATIONS.setdefault(sid, [])
 
+        # Check if this message should use RAG (shelter/homeless/donation queries)
+        if _should_use_rag(req.message):
+            # Use RAG to answer directly from documents
+            rag_response = _enhance_message_with_rag(req.message, max_tokens=700)
+            
+            # Append user message and RAG response to conversation
+            conv.append({"role": "assistant", "content": rag_response})
+            
+            # Keep conversation bounded
+            if len(conv) > 500:
+                del conv[0: len(conv) - 200]
+            
+            return {"ok": True, "session_id": sid, "reply": rag_response, "rag_used": True}
+
         # append the new user message
         conv.append({"role": "user", "content": req.message})
+        
+        # Try to detect if this is a tool-requiring query and inject a tool call
+        injected_tool_call = _detect_and_inject_tool_call(req.message)
 
-        # build messages for LLM: system prompt, disaster context, then recent history
+        # build messages for LLM: system prompt that enforces weather-tool-first behavior
         system = (
-            "You are AidConnect Assistant — a helpful, concise, and interactive disaster response assistant. "
-            "You have access to a `disaster` JSON object describing the current incident. "
-            "Answer only based on the provided context or general best practices. If you do not know an answer or lack data, reply with 'I don't know' or ask for clarification. Do NOT invent facts. "
-            "When possible give short actionable steps with estimated arrival times for resources (if distances are provided)."
+            "You are AidConnect Assistant — a concise disaster/weather assistant.\n"
+            "When a user asks about weather or mentions weather-related terms (weather, forecast, temperature, precipitation, rain, snow, windy, wind, humidity, conditions), YOU MUST call the tool `call_weather_api(city: str)` to retrieve current weather.\n"
+            "Do NOT guess or invent weather details; rely only on the tool output for weather answers.\n"
+            "After the tool returns results, format a brief, actionable summary (1-3 sentences) and any important values (temperature, wind, precipitation).\n\n"
+            "If the user's query is not about weather, continue normal behavior but do not call the weather tool.\n\n"
+            "TOOL USAGE (required):\n"
+            "- For any user query mentioning weather terms, respond with EXACTLY: <tool_call>{\"name\": \"call_weather_api\", \"arguments\": {\"city\": \"<City Name>\"}}</tool_call>\n"
+            "- Example: User asks: \"What's the weather in Georgetown DC today?\"\n"
+            "  Assistant should respond: <tool_call>{\"name\": \"call_weather_api\", \"arguments\": {\"city\": \"Georgetown DC\"}}</tool_call>\n\n"
+            "After the tool result is supplied, produce the final answer based only on that result."
         )
 
         messages: List[Dict[str, str]] = [{"role": "system", "content": system}]
@@ -692,16 +928,66 @@ def api_assistant_converse(req: AssistantConverseRequest):
         recent = conv[-max_hist:]
         messages.extend(recent)
 
-        out = nv_chat(messages, max_tokens=700, temperature=0.2)
+        # If we detected a tool-requiring query, skip LLM and use the injected tool call directly
+        if injected_tool_call:
+            out = injected_tool_call
+            # Execute the tool immediately
+            tool_calls = _parse_tool_calls(out)
+            if tool_calls:
+                tool_results = []
+                for tool_call in tool_calls:
+                    tool_name = tool_call.get("name")
+                    tool_args = tool_call.get("arguments", {})
+                    result = _execute_tool_call(tool_name, tool_args)
+                    tool_results.append({"tool": tool_name, "result": result})
+                
+                # Now ask LLM to format the response based on tool results
+                messages.append({"role": "user", "content": f"Tool results:\n{json.dumps(tool_results, indent=2)}\n\nPlease provide a helpful response to the user based on these results. Be concise and actionable."})
+                final_response = nv_chat(messages, max_tokens=700, temperature=0.2)
+                
+                conv.append({"role": "assistant", "content": final_response})
+                if len(conv) > 500:
+                    del conv[0: len(conv) - 200]
+                
+                return {"ok": True, "session_id": sid, "reply": final_response}
 
-        # append assistant reply to conversation
+        # Multi-turn tool calling loop (max 3 iterations to prevent infinite loops)
+        max_iterations = 3
+        for iteration in range(max_iterations):
+            out = nv_chat(messages, max_tokens=700, temperature=0.2)
+
+            # Check if the response contains tool calls
+            tool_calls = _parse_tool_calls(out)
+            
+            if not tool_calls:
+                # No tool calls, this is the final response
+                # append assistant reply to conversation
+                conv.append({"role": "assistant", "content": out})
+                
+                # keep conversation bounded
+                if len(conv) > 500:
+                    del conv[0: len(conv) - 200]
+                
+                return {"ok": True, "session_id": sid, "reply": out}
+            
+            # Execute tool calls and add results to messages
+            tool_results = []
+            for tool_call in tool_calls:
+                tool_name = tool_call.get("name")
+                tool_args = tool_call.get("arguments", {})
+                result = _execute_tool_call(tool_name, tool_args)
+                tool_results.append({"tool": tool_name, "result": result})
+            
+            # Add assistant's tool call request and tool results to messages
+            messages.append({"role": "assistant", "content": out})
+            tool_results_text = json.dumps(tool_results, indent=2)
+            messages.append({"role": "user", "content": f"Tool results:\n{tool_results_text}\n\nPlease provide your response based on these results."})
+
+        # If we exhausted iterations, return the last response
         conv.append({"role": "assistant", "content": out})
-
-        # keep conversation bounded
         if len(conv) > 500:
-            # drop oldest messages but keep last 200
             del conv[0: len(conv) - 200]
-
+        
         return {"ok": True, "session_id": sid, "reply": out}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

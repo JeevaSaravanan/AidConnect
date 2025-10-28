@@ -2,13 +2,43 @@ import { useState, useRef, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Bot } from "lucide-react";
+import { Send, Bot, ChevronDown, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
+  thinking?: string;
 }
+
+const ThinkingCollapsible = ({ thinking }: { thinking: string }) => {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <Collapsible open={isOpen} onOpenChange={setIsOpen} className="mb-3">
+      <CollapsibleTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="flex items-center gap-1 p-0 h-auto text-xs text-muted-foreground hover:text-foreground"
+        >
+          {isOpen ? (
+            <ChevronDown className="h-3 w-3" />
+          ) : (
+            <ChevronRight className="h-3 w-3" />
+          )}
+          <span className="italic">View thinking process</span>
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="mt-2">
+        <div className="text-xs p-2 bg-muted/50 rounded border border-border italic text-muted-foreground">
+          {thinking}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+};
 
 const ChatInterface = () => {
   const [messages, setMessages] = useState<Message[]>([
@@ -72,8 +102,22 @@ const ChatInterface = () => {
       }
 
       // Normalize backend response into a text reply
-      const reply = (json && (json.response || json.reply)) || `(offline) I heard: ${prompt}`;
-      const assistantMessage: Message = { role: "assistant", content: reply };
+      let reply = (json && (json.response || json.reply)) || `(offline) I heard: ${prompt}`;
+      
+      // Parse <think> tags from the response
+      let thinking = "";
+      const thinkMatch = reply.match(/<think>([\s\S]*?)<\/think>/);
+      if (thinkMatch) {
+        thinking = thinkMatch[1].trim();
+        // Remove the <think> block from the main reply
+        reply = reply.replace(/<think>[\s\S]*?<\/think>/, "").trim();
+      }
+      
+      const assistantMessage: Message = { 
+        role: "assistant", 
+        content: reply,
+        thinking: thinking || undefined
+      };
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
       console.error("Error:", error);
@@ -116,6 +160,9 @@ const ChatInterface = () => {
                   : "bg-secondary text-secondary-foreground"
               }`}
             >
+              {message.role === "assistant" && message.thinking && (
+                <ThinkingCollapsible thinking={message.thinking} />
+              )}
               <p className="text-sm whitespace-pre-wrap">{message.content}</p>
             </div>
           </div>
