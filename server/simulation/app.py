@@ -104,7 +104,7 @@ def run_forecast(weather_event, weather_variables):
     input_id = WEATHER_EVENT_MAP.get(weather_event, 3)
     
     headers = {
-        "Authorization": f"Bearer {os.getenv('NGC_API_KEY', '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')}",
+        "Authorization": f"Bearer {os.getenv('NGC_API_KEY', '')}",
         "NVCF-POLL-SECONDS": "5"
     }
     

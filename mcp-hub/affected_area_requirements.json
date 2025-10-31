@@ -1,0 +1,293 @@
+[
+  {
+    "id": "A001",
+    "location": "Washington DC - Northeast",
+    "coordinates": [38.912, -76.981],
+    "disaster_type": "Flood",
+    "population_affected": 2400,
+    "priority_level": 5,
+    "required_resources": {
+      "water": 1200,
+      "food_kits": 1000,
+      "blankets": 600,
+      "medical_kits": 250
+    },
+    "time_reported": "2025-10-28T08:15:00Z"
+  },
+  {
+    "id": "A002",
+    "location": "Georgetown - DC",
+    "coordinates": [38.907, -77.066],
+    "disaster_type": "Flood",
+    "population_affected": 950,
+    "priority_level": 4,
+    "required_resources": {
+      "water": 600,
+      "food_kits": 450,
+      "blankets": 300,
+      "medical_kits": 120
+    },
+    "time_reported": "2025-10-28T08:45:00Z"
+  },
+  {
+    "id": "A003",
+    "location": "Arlington VA - Ballston",
+    "coordinates": [38.882, -77.111],
+    "disaster_type": "Storm Damage",
+    "population_affected": 1800,
+    "priority_level": 4,
+    "required_resources": {
+      "tarps": 400,
+      "food_kits": 900,
+      "flashlights": 200,
+      "medical_kits": 180
+    },
+    "time_reported": "2025-10-28T09:00:00Z"
+  },
+  {
+    "id": "A004",
+    "location": "Alexandria VA - Old Town",
+    "coordinates": [38.804, -77.043],
+    "disaster_type": "Flood",
+    "population_affected": 1200,
+    "priority_level": 5,
+    "required_resources": {
+      "water": 800,
+      "food_kits": 700,
+      "blankets": 400,
+      "sandbags": 200
+    },
+    "time_reported": "2025-10-28T09:30:00Z"
+  },
+  {
+    "id": "A005",
+    "location": "Washington DC - Southeast",
+    "coordinates": [38.878, -76.97],
+    "disaster_type": "Flood",
+    "population_affected": 3100,
+    "priority_level": 5,
+    "required_resources": {
+      "water": 2000,
+      "food_kits": 1500,
+      "blankets": 1200,
+      "medical_kits": 500
+    },
+    "time_reported": "2025-10-28T10:00:00Z"
+  },
+  {
+    "id": "A006",
+    "location": "Arlington VA - Pentagon City",
+    "coordinates": [38.86, -77.06],
+    "disaster_type": "Power Outage",
+    "population_affected": 800,
+    "priority_level": 3,
+    "required_resources": {
+      "flashlights": 300,
+      "batteries": 600,
+      "water": 400
+    },
+    "time_reported": "2025-10-28T10:30:00Z"
+  },
+  {
+    "id": "A007",
+    "location": "Georgetown - Waterfront",
+    "coordinates": [38.902, -77.062],
+    "disaster_type": "Flood",
+    "population_affected": 650,
+    "priority_level": 4,
+    "required_resources": {
+      "water": 400,
+      "food_kits": 350,
+      "blankets": 200,
+      "sandbags": 150
+    },
+    "time_reported": "2025-10-28T10:45:00Z"
+  },
+  {
+    "id": "A008",
+    "location": "Alexandria VA - Del Ray",
+    "coordinates": [38.826, -77.058],
+    "disaster_type": "Storm Damage",
+    "population_affected": 1100,
+    "priority_level": 4,
+    "required_resources": {
+      "tarps": 300,
+      "food_kits": 500,
+      "flashlights": 150,
+      "medical_kits": 90
+    },
+    "time_reported": "2025-10-28T11:00:00Z"
+  },
+  {
+    "id": "A009",
+    "location": "Washington DC - Southwest Waterfront",
+    "coordinates": [38.877, -77.021],
+    "disaster_type": "Flood",
+    "population_affected": 1600,
+    "priority_level": 4,
+    "required_resources": {
+      "water": 900,
+      "food_kits": 700,
+      "blankets": 500,
+      "sandbags": 100
+    },
+    "time_reported": "2025-10-28T11:15:00Z"
+  },
+  {
+    "id": "A010",
+    "location": "Arlington VA - Crystal City",
+    "coordinates": [38.857, -77.049],
+    "disaster_type": "Power Outage",
+    "population_affected": 950,
+    "priority_level": 3,
+    "required_resources": {
+      "flashlights": 400,
+      "batteries": 700,
+      "water": 350
+    },
+    "time_reported": "2025-10-28T11:30:00Z"
+  },
+  {
+    "id": "A011",
+    "location": "Washington DC - Capitol Hill",
+    "coordinates": [38.889, -77.005],
+    "disaster_type": "Flood",
+    "population_affected": 2100,
+    "priority_level": 5,
+    "required_resources": {
+      "water": 1300,
+      "food_kits": 1000,
+      "blankets": 700,
+      "medical_kits": 300
+    },
+    "time_reported": "2025-10-28T11:45:00Z"
+  },
+  {
+    "id": "A012",
+    "location": "Alexandria VA - West End",
+    "coordinates": [38.822, -77.12],
+    "disaster_type": "Flood",
+    "population_affected": 1700,
+    "priority_level": 4,
+    "required_resources": {
+      "water": 900,
+      "food_kits": 850,
+      "blankets": 600
+    },
+    "time_reported": "2025-10-28T12:00:00Z"
+  },
+  {
+    "id": "A013",
+    "location": "Georgetown - University Area",
+    "coordinates": [38.906, -77.071],
+    "disaster_type": "Flood",
+    "population_affected": 750,
+    "priority_level": 3,
+    "required_resources": {
+      "water": 400,
+      "food_kits": 350,
+      "blankets": 150
+    },
+    "time_reported": "2025-10-28T12:15:00Z"
+  },
+  {
+    "id": "A014",
+    "location": "Washington DC - Anacostia",
+    "coordinates": [38.86, -76.98],
+    "disaster_type": "Flood",
+    "population_affected": 2800,
+    "priority_level": 5,
+    "required_resources": {
+      "water": 1500,
+      "food_kits": 1300,
+      "blankets": 900,
+      "medical_kits": 400
+    },
+    "time_reported": "2025-10-28T12:30:00Z"
+  },
+  {
+    "id": "A015",
+    "location": "Arlington VA - Rosslyn",
+    "coordinates": [38.896, -77.07],
+    "disaster_type": "Power Outage",
+    "population_affected": 700,
+    "priority_level": 3,
+    "required_resources": {
+      "flashlights": 250,
+      "batteries": 400,
+      "water": 200
+    },
+    "time_reported": "2025-10-28T12:45:00Z"
+  },
+  {
+    "id": "A016",
+    "location": "Alexandria VA - Carlyle District",
+    "coordinates": [38.806, -77.064],
+    "disaster_type": "Flood",
+    "population_affected": 1000,
+    "priority_level": 4,
+    "required_resources": {
+      "water": 500,
+      "food_kits": 600,
+      "blankets": 300
+    },
+    "time_reported": "2025-10-28T13:00:00Z"
+  },
+  {
+    "id": "A017",
+    "location": "Washington DC - Columbia Heights",
+    "coordinates": [38.928, -77.032],
+    "disaster_type": "Storm Damage",
+    "population_affected": 1300,
+    "priority_level": 4,
+    "required_resources": {
+      "tarps": 300,
+      "food_kits": 600,
+      "flashlights": 180
+    },
+    "time_reported": "2025-10-28T13:15:00Z"
+  },
+  {
+    "id": "A018",
+    "location": "Arlington VA - Clarendon",
+    "coordinates": [38.887, -77.095],
+    "disaster_type": "Storm Damage",
+    "population_affected": 900,
+    "priority_level": 3,
+    "required_resources": {
+      "tarps": 200,
+      "food_kits": 400,
+      "flashlights": 120
+    },
+    "time_reported": "2025-10-28T13:30:00Z"
+  },
+  {
+    "id": "A019",
+    "location": "Alexandria VA - Eisenhower Ave",
+    "coordinates": [38.806, -77.076],
+    "disaster_type": "Flood",
+    "population_affected": 850,
+    "priority_level": 3,
+    "required_resources": {
+      "water": 400,
+      "food_kits": 350,
+      "blankets": 200
+    },
+    "time_reported": "2025-10-28T13:45:00Z"
+  },
+  {
+    "id": "A020",
+    "location": "Washington DC - Dupont Circle",
+    "coordinates": [38.91, -77.044],
+    "disaster_type": "Flood",
+    "population_affected": 1400,
+    "priority_level": 4,
+    "required_resources": {
+      "water": 800,
+      "food_kits": 700,
+      "blankets": 350,
+      "medical_kits": 150
+    },
+    "time_reported": "2025-10-28T14:00:00Z"
+  }
+]

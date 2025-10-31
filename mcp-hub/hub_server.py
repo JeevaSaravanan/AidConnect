@@ -192,6 +192,31 @@ async def disaster_plan(city: str, hazard: str = "flood") -> str:
         temperature=0.2
     )
 
+@mcp.tool
+async def match_shelter_resources(
+    location: str,
+    population_affected: int,
+    priority_level: int,
+    required_resources: Dict[str, int],
+    coordinates: List[float]
+) -> str:
+    """
+    Use LLM to match an affected area with the best 3 shelter resources.
+    Returns JSON with top 3 shelter matches and reasoning.
+    """
+    from match_resources_api import match_resources
+    
+    affected_area = {
+        "location": location,
+        "population_affected": population_affected,
+        "priority_level": priority_level,
+        "required_resources": required_resources,
+        "coordinates": coordinates
+    }
+    
+    result = match_resources(affected_area)
+    return json.dumps(result, indent=2)
+
 
 @mcp.resource("hub://about")
 def about() -> str:

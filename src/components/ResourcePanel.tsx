@@ -16,6 +16,8 @@ type Need = {
   distance_km?: number | null;
   eta_minutes?: number | null;
   urgency?: number; // lower = more urgent
+  capacity?: number;
+  status?: string;
 };
 
 const DEFAULT_API = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000";
@@ -32,42 +34,65 @@ const ResourcePanel = () => {
     setLoading(true);
     setError(null);
     try {
-      // fetch a small set of shelters from the API and map to requests
-      const res = await fetch(`${DEFAULT_API}/shelters?limit=10`);
+      // Fetch shelters from shelters_actual.jsonl
+      const res = await fetch('/mcp-hub/shelters_actual.jsonl');
       if (!res.ok) {
-        throw new Error(`API error: ${res.status} ${res.statusText}`);
+        throw new Error(`Failed to load shelters: ${res.status} ${res.statusText}`);
       }
-      const body = await res.json();
-      const data = body?.data || [];
+      const text = await res.text();
+      const lines = text.trim().split('\n');
+      const data = lines.map(line => JSON.parse(line));
 
-  const mapped: Need[] = data.map((s: any) => {
-        // derive priority from post_cap / evac_cap heuristics in `details` or fields
-        const postCap = typeof s.post_cap === "number" ? s.post_cap : undefined;
-        const evacCap = typeof s.evac_cap === "number" ? s.evac_cap : undefined;
-        const priority: Need["priority"] = (postCap && postCap > 300) || (evacCap && evacCap > 300) ? "high" : "medium";
+      // Take first 10 shelters
+      const shelters = data.slice(0, 10);
 
-        // try to extract requested items if available, otherwise show a generic placeholder
+      const mapped: Need[] = shelters.map((s: any) => {
+        // Parse details to extract capacity info
+        let postCap = 0;
+        let evacCap = 0;
+        let status = "UNKNOWN";
+        
+        if (s.details && typeof s.details === "string") {
+          const postCapMatch = s.details.match(/post_cap=(\d+)/);
+          const evacCapMatch = s.details.match(/evac_cap=(\d+)/);
+          const statusMatch = s.details.match(/Status=(\w+)/);
+          
+          if (postCapMatch) postCap = parseInt(postCapMatch[1]);
+          if (evacCapMatch) evacCap = parseInt(evacCapMatch[1]);
+          if (statusMatch) status = statusMatch[1];
+        }
+
+        // Determine priority based on capacity
+        const totalCap = postCap + evacCap;
+        const priority: Need["priority"] = totalCap > 400 ? "high" : totalCap > 200 ? "medium" : "low";
+
+        // Use available_items from the shelter data
         let items: string[] = [];
-        if (s.requested_items && Array.isArray(s.requested_items)) items = s.requested_items;
-        else if (s.requested_items && typeof s.requested_items === "string") items = [s.requested_items];
-        else if (s.details && typeof s.details === "string") items = [s.details.split(",")[0].slice(0, 80) + "..."];
-        else items = ["General supplies"];
+        if (s.available_items && Array.isArray(s.available_items)) {
+          items = s.available_items;
+        } else if (s.available_items && typeof s.available_items === "string") {
+          items = [s.available_items];
+        } else {
+          items = ["No items listed"];
+        }
 
-        // try to get lat/lon from common fields
-        const lat = s.latitude ?? s.lat ?? (s._geo && s._geo.lat) ?? null;
-        const lon = s.longitude ?? s.lon ?? s.lng ?? (s._geo && s._geo.lon) ?? null;
+        // Get lat/lon
+        const lat = s.latitude ?? null;
+        const lon = s.longitude ?? null;
 
         return {
-          shelter: s.shelter_name || s.name || "Unknown shelter",
+          shelter: s.shelter_name || "Unknown shelter",
           location: s.location || s.city || "",
           items,
           priority,
-          eta: s.eta || undefined,
-          lat: lat !== undefined ? (lat === null ? null : Number(lat)) : null,
-          lon: lon !== undefined ? (lon === null ? null : Number(lon)) : null,
+          eta: undefined,
+          lat: lat !== null ? Number(lat) : null,
+          lon: lon !== null ? Number(lon) : null,
           distance_km: null,
           eta_minutes: null,
           urgency: 9999,
+          capacity: totalCap,
+          status,
         } as Need;
       });
 
@@ -178,20 +203,23 @@ const ResourcePanel = () => {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-foreground">Resource Allocation Queue</h2>
+        <div>
+          <h2 className="text-xl font-semibold text-foreground">Available Shelter Resources</h2>
+          <p className="text-xs text-muted-foreground">Shelters with supplies ready for deployment</p>
+        </div>
         <Button variant="outline" size="sm" onClick={() => fetchNeeds()}>
-          View All Requests
+          View All Shelters
         </Button>
       </div>
 
 
 
-      {loading && <p className="text-sm text-muted-foreground">Loading requests…</p>}
+      {loading && <p className="text-sm text-muted-foreground">Loading shelters…</p>}
       {error && <p className="text-sm text-destructive">Error: {error}</p>}
 
       {needs.length === 0 && !loading && !error && (
         <Card className="p-4 bg-card border-border">
-          <p className="text-sm text-muted-foreground">No active resource requests found.</p>
+          <p className="text-sm text-muted-foreground">No shelters with available resources found.</p>
         </Card>
       )}
 
@@ -203,10 +231,10 @@ const ResourcePanel = () => {
                 <h3 className="font-semibold text-foreground flex items-center gap-2">
                   {need.shelter}
                   <Badge
-                    variant={need.priority === "high" ? "destructive" : "secondary"}
+                    variant={need.priority === "high" ? "default" : "secondary"}
                     className="text-xs"
                   >
-                    {need.priority === "high" ? "HIGH PRIORITY" : need.priority.toUpperCase()}
+                    {need.priority === "high" ? "HIGH CAPACITY" : need.priority.toUpperCase()}
                   </Badge>
                 </h3>
                 <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
@@ -215,6 +243,11 @@ const ResourcePanel = () => {
                 </p>
                 {typeof need.distance_km === "number" && (
                   <p className="text-xs text-muted-foreground mt-1">Distance: {need.distance_km} km</p>
+                )}
+                {need.capacity && need.capacity > 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Total Capacity: {need.capacity} people | Status: {need.status}
+                  </p>
                 )}
               </div>
               <div className="text-right">
@@ -228,7 +261,7 @@ const ResourcePanel = () => {
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground flex items-center gap-1">
                 <Package className="w-3 h-3" />
-                Requested Items:
+                Resources Available:
               </p>
               <div className="flex flex-wrap gap-2">
                 {need.items.map((item, i) => (
@@ -241,24 +274,26 @@ const ResourcePanel = () => {
 
             <div className="flex gap-2">
               <Button size="sm" className="flex-1">
-                Allocate Resources
+                Deploy to Area
               </Button>
               <Button size="sm" variant="outline">
-                View Details
+                Check Inventory
               </Button>
             </div>
           </div>
         </Card>
       ))}
 
-      <Card className="p-4 bg-secondary border-border">
+      <Card className="p-4 bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800">
         <div className="flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-warning mt-0.5" />
+          <AlertCircle className="w-5 h-5 text-green-600 dark:text-green-400 mt-0.5" />
           <div>
-            <p className="text-sm font-medium text-foreground">AI Recommendation</p>
+            <p className="text-sm font-medium text-foreground">💡 Resource Optimization Tip</p>
             <p className="text-xs text-muted-foreground mt-1">
-              Priority alert: Riverside shelter at 95% capacity. Recommend opening backup
-              facility within 2 hours and diverting 30% of incoming evacuees.
+              Riverside shelter approaching capacity (95%). Consider: <br/>
+              • Open backup facility in Alexandria within 2 hours<br/>
+              • Redistribute 30% of supplies to reduce congestion<br/>
+              • Coordinate with volunteer teams for faster deployment
             </p>
           </div>
         </div>
