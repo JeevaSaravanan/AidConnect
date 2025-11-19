@@ -18,13 +18,6 @@ AidConnect is an AI-powered disaster response platform that intelligently matche
 - 💬 **AI Assistant** - Chat interface for disaster coordination
 - 📊 **Live Dashboard** - Real-time metrics and alert feed
 
-## 📋 Quick Links
-
-- [Installation](#installation)
-- [Running the App](#running-the-application)
-- [API Docs](#api-documentation)
-- [Technology Stack](#technology-stack)
-
 ## 🏗️ Architecture
 
 ```
