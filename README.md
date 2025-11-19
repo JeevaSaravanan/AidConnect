@@ -154,24 +154,6 @@ npm run lint
 npm run build
 ```
 
-## 🐛 Troubleshooting
-
-**Port in use:**
-```bash
-lsof -ti:5001 | xargs kill -9  # Weather service
-lsof -ti:5002 | xargs kill -9  # Resource API
-```
-
-**Module not found:**
-```bash
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
-**NVIDIA API errors:** Verify API key and model access
-
-For more help, see `mcp-hub/MATCH_RESOURCES_README.md`
-
 ## 🙏 Acknowledgments
 
 - **NVIDIA** for AI APIs and FourCastNet technology
